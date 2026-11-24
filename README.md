@@ -27,7 +27,8 @@ Locations can be full addresses, place names, or `lat,lng` coordinates.
 
 - The secret in the URL is the only lock. Anyone with the URL can spend your Google quota. If it leaks, change `MCP_PATH_SECRET`, redeploy, and re-add the connector.
 - Wrong secret returns 404; anything but POST returns 405.
-- Requests use traffic-aware routing, which Google bills at its Pro rate. Personal trip use stays well inside the monthly free allowance, but keep the daily quota set.
+- Traffic-on-polyline (the "stopped traffic ahead" detail) triggers Google's Compute Routes Enterprise SKU: 1,000 free calls a month, then $15 per 1,000 (https://developers.google.com/maps/billing-and-pricing/sku-details/routes). Keep the daily quota low (about 30) and a budget alert set.
+- Hand-off links are plain public URLs with no API calls or billing.
 - Each request logs one diagnostic line to Vercel (HTTP method, whether the secret matched, MCP method name, client headers). It never logs the secret, addresses, or tool arguments.
 
 ## Develop
