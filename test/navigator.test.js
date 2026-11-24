@@ -5,6 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { decodePolyline, formatDuration, summarizeTraffic } from "../lib/format.js";
 import { departureTimeOrNow, toWaypoint } from "../lib/google.js";
 import { secretMatches } from "../lib/auth.js";
+import { googleMapsLink, handoffBlock, wazeLink } from "../lib/links.js";
 
 const SECRET = "a".repeat(48);
 const MILE_LAT = 1 / 69.05; // degrees of latitude per mile
@@ -154,6 +155,39 @@ describe("helpers", () => {
     expect(departureTimeOrNow("2999-01-01T00:00:00Z")).toBe("2999-01-01T00:00:00.000Z");
   });
 
+  it("builds a Google Maps navigation link with via points and no origin", () => {
+    const url = new URL(googleMapsLink("Lafayette, LA", ["Morgan City, LA"]));
+    expect(url.origin + url.pathname).toBe("https://www.google.com/maps/dir/");
+    expect(url.searchParams.get("api")).toBe("1");
+    expect(url.searchParams.get("destination")).toBe("Lafayette, LA");
+    expect(url.searchParams.get("waypoints")).toBe("Morgan City, LA");
+    expect(url.searchParams.get("dir_action")).toBe("navigate");
+    expect(url.searchParams.has("origin")).toBe(false);
+    expect(url.toString()).toContain("waypoints=Morgan+City%2C+LA");
+  });
+
+  it("caps Google Maps waypoints at three for phones", () => {
+    const url = new URL(googleMapsLink("Lafayette, LA", ["A", "B", "C", "D"]));
+    expect(url.searchParams.get("waypoints")).toBe("A|B|C");
+    expect(url.toString()).toContain("A%7CB%7CC");
+  });
+
+  it("builds Waze links for addresses and coordinates", () => {
+    const a = new URL(wazeLink("Lafayette, LA"));
+    expect(a.origin + a.pathname).toBe("https://waze.com/ul");
+    expect(a.searchParams.get("q")).toBe("Lafayette, LA");
+    expect(a.searchParams.get("navigate")).toBe("yes");
+    const b = new URL(wazeLink("30.2241, -92.0198"));
+    expect(b.searchParams.get("ll")).toBe("30.2241,-92.0198");
+  });
+
+  it("sends Waze to the first via point when a route is forced", () => {
+    const block = handoffBlock([{ label: "US-90", destination: "Lafayette, LA", via: ["Morgan City, LA"] }]);
+    expect(block).toContain("[US-90 in Google Maps](https://www.google.com/maps/dir/?");
+    expect(block).toContain("[US-90 in Waze, to Morgan City, LA first](https://waze.com/ul?q=Morgan+City%2C+LA");
+    expect(block).toContain("keep driving when it says you've arrived");
+  });
+
   it("rejects wrong or short secrets", () => {
     expect(secretMatches("x", SECRET)).toBe(false);
     expect(secretMatches(SECRET, SECRET)).toBe(true);
@@ -169,10 +203,10 @@ describe("HTTP endpoint", () => {
     expect(get.status).toBe(405);
   });
 
-  it("lists the three tools", async () => {
+  it("lists the four tools", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["compare_routes", "get_drive_time", "ping"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["compare_routes", "get_drive_time", "open_in_maps", "ping"]);
     await client.close();
   });
 
@@ -185,6 +219,9 @@ describe("HTTP endpoint", () => {
     expect(out).toContain("Traffic is adding about 17 minutes");
     expect(out).toContain("2 miles of stopped or crawling traffic, starting about 10 miles ahead");
     expect(out).toContain("Alternate via US-90 W: 2 hours 45 minutes, 15 minutes slower");
+    const links = result.content[1].text;
+    expect(links).toContain("[Lafayette, LA in Google Maps](https://www.google.com/maps/dir/?api=1&destination=Lafayette%2C+LA");
+    expect(links).toContain("[Lafayette, LA in Waze](https://waze.com/ul?q=Lafayette%2C+LA&navigate=yes");
     const sent = lastGoogleBodies[0];
     expect(sent.headers["x-goog-api-key"]).toBe("test-key");
     expect(sent.headers["x-goog-fieldmask"]).toContain("speedReadingIntervals");
@@ -211,10 +248,28 @@ describe("HTTP endpoint", () => {
     expect(out.startsWith("Fastest right now: I-10 through New Orleans and US-90, 2 hours 50 minutes")).toBe(true);
     expect(out).toContain("I-12 and the Basin bridge: 3 hours 30 minutes, 40 minutes slower");
     expect(out).toContain("6 miles of stopped or crawling traffic, starting about 50 miles ahead");
+    const links = result.content[1].text.split("\n");
+    expect(links[1]).toContain("[I-10 through New Orleans and US-90 in Google Maps]");
+    expect(links[1]).toContain("waypoints=Morgan+City%2C+LA");
+    expect(links[3]).toContain("[I-12 and the Basin bridge in Google Maps]");
+    expect(links[3]).toContain("waypoints=Henderson%2C+LA");
     for (const { body } of lastGoogleBodies) {
       expect(body.intermediates[0].via).toBe(true);
       expect(body.computeAlternativeRoutes).toBeUndefined();
     }
+    await client.close();
+  });
+
+  it("open_in_maps returns links without calling Google", async () => {
+    lastGoogleBodies = [];
+    const client = await connect();
+    const result = await client.callTool({
+      name: "open_in_maps",
+      arguments: { destination: "Lafayette, LA", via: ["Morgan City, LA"], label: "US-90 to Lafayette" },
+    });
+    expect(lastGoogleBodies).toHaveLength(0);
+    expect(result.content[1].text).toContain("[US-90 to Lafayette in Google Maps](https://www.google.com/maps/dir/?");
+    expect(result.content[1].text).toContain("[US-90 to Lafayette in Waze, to Morgan City, LA first]");
     await client.close();
   });
 
