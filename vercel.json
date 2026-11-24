@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "public",
+  "rewrites": [{ "source": "/mcp/:secret", "destination": "/api/mcp?s=:secret" }],
+  "functions": { "api/mcp.js": { "maxDuration": 30 } }
+}
