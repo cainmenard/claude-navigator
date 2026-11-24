@@ -18,14 +18,14 @@ Locations can be full addresses, place names, or `lat,lng` coordinates.
 
 1. **Google Cloud:** create a project with billing, enable **Routes API** only, create an API key restricted to Routes API, and set a daily quota (for example 300 requests/day) plus a budget alert.
 2. **Vercel env vars** (sensitive, production): `MCP_PATH_SECRET` (`openssl rand -hex 24`) and `GOOGLE_MAPS_API_KEY`. Redeploy after changing either.
-3. **Claude:** claude.ai > Settings > Connectors > Add custom connector. URL: `https://<project>.vercel.app/mcp/<MCP_PATH_SECRET>`, no sign-in.
+3. **Claude:** claude.ai > Settings > Connectors > Add custom connector. URL: `https://<project>.vercel.app/mcp/<MCP_PATH_SECRET>`, **No sign-in**. If it later shows "needs reconnect", remove it and re-add with No sign-in; Reconnect starts a sign-in flow that goes nowhere.
 
 ## Security and cost
 
 - The secret in the URL is the only lock. Anyone with the URL can spend your Google quota. If it leaks, change `MCP_PATH_SECRET`, redeploy, and re-add the connector.
 - Wrong secret returns 404; anything but POST returns 405.
 - Requests use traffic-aware routing, which Google bills at its Pro rate. Personal trip use stays well inside the monthly free allowance, but keep the daily quota set.
-- Nothing is logged beyond Vercel's defaults.
+- Each request logs one diagnostic line to Vercel (HTTP method, whether the secret matched, MCP method name, client headers). It never logs the secret, addresses, or tool arguments.
 
 ## Develop
 
