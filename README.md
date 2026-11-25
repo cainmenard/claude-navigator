@@ -10,10 +10,11 @@ It does not navigate. Keep Google Maps or Waze running for turn-by-turn; ask Cla
 | --- | --- |
 | `get_drive_time(origin, destination, departure_time?, avoid?)` | Live drive time, main road, minutes traffic is adding, miles of stopped or slow traffic and how far ahead, up to two alternates. |
 | `compare_routes(origin, destination, options[], departure_time?)` | Ranks 2 to 4 named routes, each forced through its own pass-through points (for example I-12 via Henderson, LA vs US-90 via Morgan City, LA). |
+| `check_preset(name, origin?, departure_time?)` | Runs a saved comparison by name. `slidell`: I-12 via Henderson vs US-90 via Morgan City to Lafayette. Add presets in `lib/presets.js`. |
 | `open_in_maps(destination, via?, label?)` | Links that start turn-by-turn in Google Maps or Waze from the phone's current location. No Google API call, no cost. |
 | `ping` | Confirms the connector is reachable and the Google key is set. |
 
-`get_drive_time` and `compare_routes` also return hand-off links, fastest route first. Google Maps links carry up to 3 via points (phone limit) and treat them as stops. Waze links can't carry via points, so a forced route sends Waze to the first via point.
+Drive-time and comparison answers include an arrival clock time in the destination's time zone (from the state in the address). They also return hand-off links, fastest route first. Google Maps links carry up to 3 via points (phone limit) and treat them as stops. Waze links can't carry via points, so a forced route sends Waze to the first via point.
 
 Locations can be full addresses, place names, or `lat,lng` coordinates.
 

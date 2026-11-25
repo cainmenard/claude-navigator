@@ -6,6 +6,7 @@ import { decodePolyline, formatDuration, summarizeTraffic } from "../lib/format.
 import { departureTimeOrNow, toWaypoint } from "../lib/google.js";
 import { secretMatches } from "../lib/auth.js";
 import { googleMapsLink, handoffBlock, wazeLink } from "../lib/links.js";
+import { arrivalSentence, timeZoneFor } from "../lib/arrival.js";
 
 const SECRET = "a".repeat(48);
 const MILE_LAT = 1 / 69.05; // degrees of latitude per mile
@@ -188,6 +189,22 @@ describe("helpers", () => {
     expect(block).toContain("keep driving when it says you've arrived");
   });
 
+  it("picks the destination time zone from the state", () => {
+    expect(timeZoneFor("Lafayette, LA")).toBe("America/Chicago");
+    expect(timeZoneFor("123 Main St, St. Augustine, FL 32084")).toBe("America/New_York");
+    expect(timeZoneFor("Pensacola, FL")).toBe("America/Chicago");
+    expect(timeZoneFor("Lafayette, Louisiana")).toBe("America/Chicago");
+    expect(timeZoneFor("30.2,-92.0")).toBeNull();
+  });
+
+  it("gives arrival clock time in the destination zone, crossing from Eastern to Central", () => {
+    const now = Date.parse("2026-11-25T11:30:00Z"); // 6:30 AM Eastern
+    expect(arrivalSentence(9 * 3600 + 10 * 60, "Lafayette, LA", null, now)).toBe("You'd arrive about 2:40 PM Central.");
+    expect(arrivalSentence(14 * 3600, "Lafayette, LA", null, now)).toBe("You'd arrive about 7:30 PM Central.");
+    expect(arrivalSentence(20 * 3600, "Lafayette, LA", null, now)).toBe("You'd arrive about 1:30 AM Central on Thursday.");
+    expect(arrivalSentence(3600, "Somewhere", null, now)).toBe("");
+  });
+
   it("rejects wrong or short secrets", () => {
     expect(secretMatches("x", SECRET)).toBe(false);
     expect(secretMatches(SECRET, SECRET)).toBe(true);
@@ -203,10 +220,10 @@ describe("HTTP endpoint", () => {
     expect(get.status).toBe(405);
   });
 
-  it("lists the four tools", async () => {
+  it("lists the five tools", async () => {
     const client = await connect();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["compare_routes", "get_drive_time", "open_in_maps", "ping"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["check_preset", "compare_routes", "get_drive_time", "open_in_maps", "ping"]);
     await client.close();
   });
 
@@ -257,6 +274,19 @@ describe("HTTP endpoint", () => {
       expect(body.intermediates[0].via).toBe(true);
       expect(body.computeAlternativeRoutes).toBeUndefined();
     }
+    await client.close();
+  });
+
+  it("check_preset runs the Slidell comparison from one name", async () => {
+    lastGoogleBodies = [];
+    const client = await connect();
+    const result = await client.callTool({ name: "check_preset", arguments: { name: "slidell", origin: "30.28,-89.78" } });
+    const out = result.content[0].text;
+    expect(out.startsWith("Fastest right now: I-10 through New Orleans and US-90, 2 hours 50 minutes")).toBe(true);
+    expect(out).toMatch(/You'd arrive about \d{1,2}:\d{2} [AP]M Central/);
+    expect(lastGoogleBodies).toHaveLength(2);
+    expect(lastGoogleBodies[0].body.origin).toEqual({ location: { latLng: { latitude: 30.28, longitude: -89.78 } } });
+    expect(result.content[1].text).toContain("waypoints=Morgan+City%2C+LA");
     await client.close();
   });
 
